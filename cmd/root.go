@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/user"
 
+	"github.com/go-git/go-git/v5"
 	"github.com/spf13/cobra"
 )
 
@@ -44,6 +45,10 @@ func Execute() {
 
 func handleError(err error) {
 	if err == nil {
+		return
+	}
+	if err == git.NoErrAlreadyUpToDate {
+		fmt.Println("origin remote was up to date, no push done")
 		return
 	}
 	fmt.Println(err)

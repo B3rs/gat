@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -10,64 +9,57 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/storer"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport/ssh"
 )
 
-func getLatestVersionFromGit(path string) (string, error) {
-	tags, err := getGitTags(".")
+func getLatestTagFromGit(repo *git.Repository) (*object.Commit, *plumbing.Reference, error) {
+
+	tagRefs, err := repo.Tags()
 	if err != nil {
-		return "", err
+		return nil, nil, err
 	}
 
-	prefix, versions := makeVersions(tags)
-	latestVersion := getLatestVersion(versions)
-	return prefix + latestVersion.String(), nil
-
-}
-
-func getLatestVersion(versions []*semver.Version) *semver.Version {
-	if len(versions) == 0 {
-		versions = append(versions, semver.New("0.0.0"))
-	}
-
-	semver.Sort(versions)
-
-	lastVersion := versions[len(versions)-1]
-	lastVersionCopy := *lastVersion
-	return &lastVersionCopy
-}
-
-func makeVersions(tagrefs storer.ReferenceIter) (string, []*semver.Version) {
-	versionPrefix := ""
-	versions := []*semver.Version{}
-
-	err := tagrefs.ForEach(func(t *plumbing.Reference) error {
-
-		tagName := string(t.Name().Short())
-
-		if strings.HasPrefix(tagName, "v") {
-			versionPrefix = "v"
-			tagName = strings.TrimPrefix(tagName, "v")
-		}
-
-		v, err := semver.NewVersion(tagName)
+	var latestTagCommit *object.Commit
+	var latestTagRef *plumbing.Reference
+	err = tagRefs.ForEach(func(tagRef *plumbing.Reference) error {
+		revision := plumbing.Revision(tagRef.Name().String())
+		tagCommitHash, err := repo.ResolveRevision(revision)
 		if err != nil {
-			fmt.Println("found malformed tag: ", tagName)
-			return nil
+			return err
 		}
-		versions = append(versions, v)
+
+		commit, err := repo.CommitObject(*tagCommitHash)
+		if err != nil {
+			return err
+		}
+
+		if latestTagCommit == nil {
+			latestTagCommit = commit
+			latestTagRef = tagRef
+		}
+
+		if commit.Committer.When.After(latestTagCommit.Committer.When) {
+			latestTagCommit = commit
+			latestTagRef = tagRef
+		}
+
 		return nil
 	})
 	if err != nil {
-		return "", nil
+		return nil, nil, err
 	}
+	return latestTagCommit, latestTagRef, nil
 
-	return versionPrefix, versions
 }
 
-func copyVersion(v *semver.Version) *semver.Version {
-	return semver.New(v.String())
+func isHead(repo *git.Repository, commit *object.Commit) (bool, error) {
+	head, err := repo.Head()
+	if err != nil {
+		return false, err
+	}
+
+	return head.Hash() == commit.Hash, nil
 }
 
 func bumpVersion(v, action string) string {
@@ -90,41 +82,16 @@ func bumpVersion(v, action string) string {
 	return prefix + version.String()
 }
 
-func getGitTags(path string) (storer.ReferenceIter, error) {
-	r, err := git.PlainOpen(path)
+func tag(repo *git.Repository, version string) (*plumbing.Reference, error) {
+	head, err := repo.Head()
 	if err != nil {
 		return nil, err
 	}
-
-	tagrefs, err := r.Tags()
-	if err != nil {
-		return nil, err
-	}
-	return tagrefs, nil
+	return repo.CreateTag(version, head.Hash(), &git.CreateTagOptions{Message: version})
 }
 
-func printAction(lastVersion, newVersion string) {
-	fmt.Printf("%s => %s\n", lastVersion, newVersion)
-}
+func push(repo *git.Repository, ref *plumbing.Reference, remote, sshFile string) error {
 
-func tagAndPush(path, remote, sshFile, version string) error {
-	r, err := git.PlainOpen(path)
-	if err != nil {
-		return err
-	}
-
-	head, err := r.Head()
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("tagging repo version %s...\n", version)
-	ref, err := r.CreateTag(version, head.Hash(), &git.CreateTagOptions{Message: version})
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("pushing %s to %s...\n", ref.Name(), remote)
 	auth, err := publicKey(sshFile)
 	if err != nil {
 		return err
@@ -138,16 +105,7 @@ func tagAndPush(path, remote, sshFile, version string) error {
 		},
 	}
 
-	if err := r.Push(po); err != nil {
-		if err == git.NoErrAlreadyUpToDate {
-			fmt.Println("origin remote was up to date, no push done")
-			return nil
-		}
-		return err
-	}
-
-	fmt.Println("done")
-	return nil
+	return repo.Push(po)
 }
 
 func publicKey(filePath string) (*ssh.PublicKeys, error) {

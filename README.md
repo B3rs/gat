@@ -4,7 +4,7 @@ Gat supports `v` in front of golang libraries
 
 # Installation
 ```
-go install github.com/B3rs/gat
+go install github.com/B3rs/gat@latest
 ```
 
 # Usage

@@ -25,6 +25,7 @@ func makeBumpCmd(bumpType string) *cobra.Command {
 			handleError(err)
 			if head {
 				fmt.Println("nothing to tag: latest commit is already tagged.")
+				return
 			}
 
 			latestVersion := latestTag.Name().Short()

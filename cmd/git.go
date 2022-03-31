@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"io/ioutil"
+	"os"
 	"strings"
 
 	"github.com/coreos/go-semver/semver"
@@ -10,9 +11,7 @@ import (
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/storer"
-	"github.com/go-git/go-git/v5/plumbing/transport"
-	gogitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
-	"golang.org/x/crypto/ssh"
+	"github.com/go-git/go-git/v5/plumbing/transport/ssh"
 )
 
 func getLatestVersionFromGit(path string) (string, error) {
@@ -126,14 +125,24 @@ func tagAndPush(path, remote, sshFile, version string) error {
 	}
 
 	fmt.Printf("pushing %s to %s...\n", ref.Name(), remote)
-
-	if err := r.Push(&git.PushOptions{
-		Auth:       getSSHKeyAuth(sshFile),
+	auth, err := publicKey(sshFile)
+	if err != nil {
+		return err
+	}
+	po := &git.PushOptions{
+		Auth:       auth,
 		RemoteName: remote,
+		Progress:   os.Stdout,
 		RefSpecs: []config.RefSpec{
 			config.RefSpec(ref.Name() + ":" + ref.Name()),
 		},
-	}); err != nil {
+	}
+
+	if err := r.Push(po); err != nil {
+		if err == git.NoErrAlreadyUpToDate {
+			fmt.Println("origin remote was up to date, no push done")
+			return nil
+		}
 		return err
 	}
 
@@ -141,10 +150,14 @@ func tagAndPush(path, remote, sshFile, version string) error {
 	return nil
 }
 
-func getSSHKeyAuth(privateSshKeyFile string) transport.AuthMethod {
-	var auth transport.AuthMethod
-	sshKey, _ := ioutil.ReadFile(privateSshKeyFile)
-	signer, _ := ssh.ParsePrivateKey([]byte(sshKey))
-	auth = &gogitssh.PublicKeys{User: "git", Signer: signer}
-	return auth
+func publicKey(filePath string) (*ssh.PublicKeys, error) {
+	sshKey, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	publicKey, err := ssh.NewPublicKeys("git", []byte(sshKey), "")
+	if err != nil {
+		return nil, err
+	}
+	return publicKey, err
 }

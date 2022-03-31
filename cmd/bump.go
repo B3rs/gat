@@ -21,7 +21,8 @@ func makeBumpCmd(bump string) *cobra.Command {
 			printAction(latestVersion, newVersion)
 
 			if !dryrun {
-				tagAndPush(".", remote, sshFile, newVersion)
+				err := tagAndPush(".", remote, sshFile, newVersion)
+				handleError(err)
 			}
 		},
 	}

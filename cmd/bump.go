@@ -39,7 +39,7 @@ func makeBumpCmd(bumpType string) *cobra.Command {
 				handleError(err)
 
 				fmt.Printf("pushing %s to %s...\n", ref.Name(), remote)
-				err = push(repo, ref, remote, sshFile)
+				err = push(repo, ref, remote, sshFile, sshFilePassword)
 				handleError(err)
 
 				fmt.Println("done")

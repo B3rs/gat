@@ -10,9 +10,10 @@ import (
 )
 
 var (
-	dryrun  = false
-	remote  = ""
-	sshFile = ""
+	dryrun          = false
+	remote          = ""
+	sshFile         = ""
+	sshFilePassword = ""
 )
 
 func init() {
@@ -22,6 +23,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&dryrun, "dryrun", false, "avoid to touch current git repository")
 	rootCmd.PersistentFlags().StringVar(&remote, "remote", "origin", "origin where push to")
 	rootCmd.PersistentFlags().StringVar(&sshFile, "sshfile", usr.HomeDir+"/.ssh/id_rsa", "ssh file used to authenticate on git remote")
+	rootCmd.PersistentFlags().StringVar(&sshFilePassword, "sshpwd", "", "ssh file password")
 
 	rootCmd.AddCommand(makeBumpCmd("patch"))
 	rootCmd.AddCommand(makeBumpCmd("minor"))

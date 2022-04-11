@@ -3,7 +3,9 @@ package cmd
 import (
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/coreos/go-semver/semver"
 	"github.com/go-git/go-git/v5"
@@ -87,12 +89,16 @@ func tag(repo *git.Repository, version string) (*plumbing.Reference, error) {
 	if err != nil {
 		return nil, err
 	}
-	return repo.CreateTag(version, head.Hash(), &git.CreateTagOptions{Message: version})
+
+	tagger, err := createTagger()
+	if err != nil {
+		return nil, err
+	}
+	return repo.CreateTag(version, head.Hash(), &git.CreateTagOptions{Message: version, Tagger: tagger})
 }
 
-func push(repo *git.Repository, ref *plumbing.Reference, remote, sshFile string) error {
-
-	auth, err := publicKey(sshFile)
+func push(repo *git.Repository, ref *plumbing.Reference, remote, sshFile string, sshFilePassword string) error {
+	auth, err := publicKey(sshFile, sshFilePassword)
 	if err != nil {
 		return err
 	}
@@ -108,14 +114,48 @@ func push(repo *git.Repository, ref *plumbing.Reference, remote, sshFile string)
 	return repo.Push(po)
 }
 
-func publicKey(filePath string) (*ssh.PublicKeys, error) {
+func publicKey(filePath string, filePwd string) (*ssh.PublicKeys, error) {
 	sshKey, err := ioutil.ReadFile(filePath)
 	if err != nil {
 		return nil, err
 	}
-	publicKey, err := ssh.NewPublicKeys("git", []byte(sshKey), "")
+	publicKey, err := ssh.NewPublicKeys("git", []byte(sshKey), filePwd)
 	if err != nil {
 		return nil, err
 	}
 	return publicKey, err
+}
+
+func createTagger() (*object.Signature, error) {
+	name, err := getUserName()
+	if err != nil {
+		return nil, err
+	}
+	email, err := getUserEmail()
+	if err != nil {
+		return nil, err
+	}
+	return &object.Signature{
+		Name:  name,
+		Email: email,
+		When:  time.Now(),
+	}, nil
+}
+
+func getUserName() (string, error) {
+	cmd := exec.Command("git", "config", "user.name")
+	stdout, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return string(stdout), nil
+}
+
+func getUserEmail() (string, error) {
+	cmd := exec.Command("git", "config", "user.email")
+	stdout, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return string(stdout), nil
 }
